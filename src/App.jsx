@@ -276,6 +276,7 @@ function RestaurantPage({ restaurants, setRestaurants }) {
 }
 
 function RestaurantCard({ restaurant: r, onPatch, onEdit, onDelete }) {
+  const [expanded, setExpanded] = useState(false)
   const [newDish, setNewDish] = useState('')
   const [newDrink, setNewDrink] = useState('')
   const dishes = r.dishes || []
@@ -289,48 +290,58 @@ function RestaurantCard({ restaurant: r, onPatch, onEdit, onDelete }) {
   function removeDish(index) { onPatch({ dishes: dishes.filter((_, i) => i !== index) }) }
   function removeDrink(index) { onPatch({ drinks: drinks.filter((_, i) => i !== index) }) }
 
-  return <article className="item-card restaurant-card">
-    <div className="restaurant-card-top">
-      <div>
-        <h3>{r.favorite?'❤️ ':''}{r.name}</h3>
-        <p>{r.category}・{r.district || '未設定地區'}</p>
-        <p className="subtext">{dishes.length} 款食品｜{drinks.length} 款飲品</p>
+  return <article className={`item-card restaurant-card compact-restaurant-card ${expanded ? 'expanded' : ''}`}>
+    <button className="restaurant-summary-button" type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+      <div className="restaurant-summary-name">
+        <h3>{r.name}</h3>
       </div>
-      <div className="card-actions">
-        <button onClick={()=>onPatch({ favorite: !r.favorite })}>{r.favorite?'取消最愛':'最愛'}</button>
-        <button className="edit-menu-btn" onClick={onEdit}>✏️ 完整編輯 / AI</button>
-        <button className="danger" onClick={onDelete}>刪除</button>
+      <div className="restaurant-summary-actions" onClick={e => e.stopPropagation()}>
+        <button type="button" className={`fav-chip ${r.favorite ? 'active' : ''}`} onClick={()=>onPatch({ favorite: !r.favorite })}>{r.favorite?'❤️ 已最愛':'🤍 加入最愛'}</button>
+        <span className="expand-hint">{expanded ? '收起 ▲' : '查看菜單 ▼'}</span>
       </div>
-    </div>
+    </button>
 
-    <div className="menu-edit-panel always-open">
-      <div className="menu-edit-title">
-        <h4>餐廳菜單修改</h4>
-        <span>可即時新增、改名、刪除菜式及飲品</span>
+    {expanded && <div className="restaurant-expanded-panel">
+      <div className="restaurant-meta-row">
+        <span>{r.category || '未分類'}</span>
+        <span>{r.district || '未設定地區'}</span>
+        <span>{dishes.length} 款食品</span>
+        <span>{drinks.length} 款飲品</span>
       </div>
-      <div className="menu-edit-grid">
-        <InlineMenuEditor
-          title="菜式"
-          items={dishes}
-          value={newDish}
-          setValue={setNewDish}
-          addItem={addDish}
-          renameItem={renameDish}
-          removeItem={removeDish}
-          placeholder="新增菜式，例如：焗豬扒飯"
-        />
-        <InlineMenuEditor
-          title="飲品"
-          items={drinks}
-          value={newDrink}
-          setValue={setNewDrink}
-          addItem={addDrink}
-          renameItem={renameDrink}
-          removeItem={removeDrink}
-          placeholder="新增飲品，例如：凍檸茶"
-        />
+      {r.note && <p className="restaurant-note">{r.note}</p>}
+      <div className="expanded-action-row">
+        <button type="button" className="edit-menu-btn" onClick={onEdit}>✏️ 完整編輯 / AI</button>
+        <button type="button" className="danger" onClick={onDelete}>刪除餐廳</button>
       </div>
-    </div>
+      <div className="menu-edit-panel expanded-menu-panel">
+        <div className="menu-edit-title">
+          <h4>餐廳菜單修改</h4>
+          <span>可即時新增、改名、刪除菜式及飲品</span>
+        </div>
+        <div className="menu-edit-grid">
+          <InlineMenuEditor
+            title="菜式"
+            items={dishes}
+            value={newDish}
+            setValue={setNewDish}
+            addItem={addDish}
+            renameItem={renameDish}
+            removeItem={removeDish}
+            placeholder="新增菜式，例如：焗豬扒飯"
+          />
+          <InlineMenuEditor
+            title="飲品"
+            items={drinks}
+            value={newDrink}
+            setValue={setNewDrink}
+            addItem={addDrink}
+            renameItem={renameDrink}
+            removeItem={removeDrink}
+            placeholder="新增飲品，例如：凍檸茶"
+          />
+        </div>
+      </div>
+    </div>}
   </article>
 }
 
