@@ -8,7 +8,7 @@ const STORAGE_KEYS = {
 }
 
 const CATEGORIES = ['快餐', '茶餐廳', '日式', '米線', '西式', '中餐', '飲品', '其他']
-const defaultSettings = { favoriteBoost: true, vibration: true }
+const defaultSettings = { favoriteBoost: true, vibration: true, slotDelaySeconds: 3 }
 
 const defaultRestaurants = [
   makeRestaurant('麥當勞', '快餐', '全港', ['1號餐 巨無霸餐', '2號餐 麥香雞餐', '3號餐 雙層芝士孖堡餐', '4號餐 麥樂雞餐', '5號餐 魚柳包餐', '6號餐 板燒雞腿包餐', '7號餐 脆辣雞腿包餐', '8號餐 安格斯牛堡餐', '9號餐 豬柳蛋漢堡餐', '10號餐 開心樂園餐'], ['可樂', '雪碧', '凍檸茶', '熱咖啡', '朱古力奶昔'], true),
@@ -56,7 +56,7 @@ export default function App() {
   const [status, setStatus] = useState('idle')
   const [phase, setPhase] = useState(0)
   const [chefLine, setChefLine] = useState(chefLines.idle[0])
-  const [slots, setSlots] = useState(['🥤 飲品', '🍱 食品', '🏠 餐廳'])
+  const [slots, setSlots] = useState(['🏠 餐廳', '🍱 食品', '🥤 飲品'])
   const [result, setResult] = useState(null)
 
   const validRestaurants = restaurants.filter(r => !includesExcluded(`${r.name} ${r.category} ${r.district} ${r.note}`, exclusions))
@@ -68,32 +68,64 @@ export default function App() {
   function startRoll() {
     const pool = weighted(validRestaurants.filter(r => r.dishes?.length && r.drinks?.length), settings.favoriteBoost)
     if (!pool.length) { setChefLine('喵？可抽餐廳好似空晒，請先加入餐廳、菜式及飲品！'); return }
+
+    const delaySeconds = Math.max(0.5, Number(settings.slotDelaySeconds || 3))
+    const stepMs = delaySeconds * 1000
+    const finalRestaurant = pickOne(pool)
+    const finalDishes = (finalRestaurant.dishes || []).filter(d => !includesExcluded(`${finalRestaurant.name} ${d}`, exclusions))
+    const finalDrinks = (finalRestaurant.drinks || []).filter(d => !includesExcluded(`${finalRestaurant.name} ${d}`, exclusions))
+    const final = {
+      id: cryptoId(),
+      createdAt: new Date().toISOString(),
+      restaurant: finalRestaurant,
+      dish: pickOne(finalDishes) || '自由配搭',
+      drink: pickOne(finalDrinks) || '清水都得'
+    }
+
     safeVibrate([60, 40, 60])
     setStatus('rolling'); setResult(null); setPhase(1)
-    let ticks = 0
-    const timer = setInterval(() => {
+    setChefLine(`第一轉：飲品先揭曉喵！每格相隔 ${delaySeconds} 秒。`)
+
+    let locked = { restaurant: null, dish: null, drink: null }
+    const spinTimer = setInterval(() => {
       const r = pickOne(pool)
       const dishPool = (r.dishes || []).filter(d => !includesExcluded(`${r.name} ${d}`, exclusions))
       const drinkPool = (r.drinks || []).filter(d => !includesExcluded(`${r.name} ${d}`, exclusions))
-      const previewDrink = pickOne(drinkPool) || '神秘飲品'
-      const previewDish = pickOne(dishPool) || '神秘食品'
-      setSlots([`🥤 ${previewDrink}`, `🍱 ${previewDish}`, `🏠 ${r.name}`])
-      if (ticks < 16) { setPhase(1); setChefLine(chefLines.rolling[0]) }
-      else if (ticks < 30) { setPhase(2); setChefLine(chefLines.rolling[1]) }
-      else { setPhase(3); setChefLine(chefLines.rolling[2]) }
-      ticks += 1
-      if (ticks > 44) {
-        clearInterval(timer)
-        const finalRestaurant = pickOne(pool)
-        const dishes = (finalRestaurant.dishes || []).filter(d => !includesExcluded(`${finalRestaurant.name} ${d}`, exclusions))
-        const drinks = (finalRestaurant.drinks || []).filter(d => !includesExcluded(`${finalRestaurant.name} ${d}`, exclusions))
-        const final = { id: cryptoId(), createdAt: new Date().toISOString(), restaurant: finalRestaurant, dish: pickOne(dishes) || '自由配搭', drink: pickOne(drinks) || '清水都得' }
-        setSlots([`🥤 ${final.drink}`, `🍱 ${final.dish}`, `🏠 ${final.restaurant.name}`])
-        setResult(final); setStatus('result'); setPhase(4); safeVibrate([80, 40, 120])
-        setChefLine(`喵！今日飲${final.drink}，食${final.dish}，去${final.restaurant.name}！`)
-        setHistory([final, ...history].slice(0, 30))
+      const preview = {
+        restaurant: locked.restaurant || `🏠 ${r.name}`,
+        dish: locked.dish || `🍱 ${pickOne(dishPool) || '神秘食品'}`,
+        drink: locked.drink || `🥤 ${pickOne(drinkPool) || '神秘飲品'}`
       }
+      setSlots([preview.restaurant, preview.dish, preview.drink])
     }, 75)
+
+    const timers = [
+      setTimeout(() => {
+        locked.drink = `🥤 ${final.drink}`
+        setPhase(1)
+        setChefLine(`飲品出爐：${final.drink}！下一格到食品喵！`)
+        safeVibrate([45, 30, 45])
+      }, stepMs),
+      setTimeout(() => {
+        locked.dish = `🍱 ${final.dish}`
+        setPhase(2)
+        setChefLine(`食品上碟：${final.dish}！最後揭曉餐廳！`)
+        safeVibrate([55, 35, 55])
+      }, stepMs * 2),
+      setTimeout(() => {
+        locked.restaurant = `🏠 ${final.restaurant.name}`
+        setPhase(3)
+        setChefLine(`餐廳壓軸：${final.restaurant.name}！命運套餐完成喵！`)
+        safeVibrate([80, 40, 120])
+      }, stepMs * 3),
+      setTimeout(() => {
+        clearInterval(spinTimer)
+        setSlots([`🏠 ${final.restaurant.name}`, `🍱 ${final.dish}`, `🥤 ${final.drink}`])
+        setResult(final); setStatus('result'); setPhase(4)
+        setChefLine(`喵！今日去${final.restaurant.name}，食${final.dish}，飲${final.drink}！`)
+        setHistory(current => [final, ...current].slice(0, 30))
+      }, stepMs * 3 + 550)
+    ]
   }
 
   function addExclusion() {
@@ -133,13 +165,10 @@ function HomePage(props) {
         <div className={`slot-machine big ${status} phase-${phase}`}>
           <div className="machine-lights" aria-hidden="true">{Array.from({length:18}).map((_,i)=><span key={i}/>)}</div>
           <div className="slot-title"><span>🐾</span><b>喵主廚 Chef Meow</b></div>
-          <div className="slots big-slots">{slots.map((s,i)=><div className={`slot slot-${i}`} key={i}><small>{['飲品','食品','餐廳'][i]}</small><strong>{s}</strong></div>)}</div>
+          <div className="slots big-slots">{slots.map((s,i)=>{ const stopped = (i===2 && phase>=1) || (i===1 && phase>=2) || (i===0 && phase>=3); return <div className={`slot slot-${i} ${stopped?'stopped':''}`} key={i}><small>{['餐廳','食品','飲品'][i]}</small><strong>{s}</strong></div> })}</div>
         </div>
         <button className={`lever ${status}`} onClick={startRoll} disabled={status==='rolling'} aria-label="拉下拉桿開始抽籤"><span className="lever-ball"/><span className="lever-stick"/><b>拉下拉桿<br/>開始抽籤！</b></button>
       </div>
-    </div>
-    <div className="flow-strip">
-      <div className={phase>=1?'active':''}><b>1</b><span>抽飲品</span></div><i>➜</i><div className={phase>=2?'active':''}><b>2</b><span>抽食品</span></div><i>➜</i><div className={phase>=3?'active':''}><b>3</b><span>抽餐廳</span></div><i>➜</i><div className={phase>=4?'active':''}><b>4</b><span>完成</span></div>
     </div>
     <div className="quick-panel"><div className="panel-head"><h3>今日唔想食</h3><span>{exclusions.length} 個排除字</span></div><div className="input-row"><input value={excludeInput} onChange={e=>setExcludeInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addExclusion()} placeholder="例如：辣、飯、可樂"/><button onClick={addExclusion}>加入</button></div><div className="chips">{exclusions.map(w=><button key={w} onClick={()=>setExclusions(exclusions.filter(x=>x!==w))}>✕ {w}</button>)}</div></div>
     {result && <ResultCard result={result} shareResult={shareResult} startRoll={startRoll}/>} 
@@ -169,5 +198,5 @@ function StatsPage({ history, setHistory }) {
 }
 function countTop(arr){ return Object.entries(arr.filter(Boolean).reduce((a,x)=>({...a,[x]:(a[x]||0)+1}),{})).sort((a,b)=>b[1]-a[1]).slice(0,5) }
 function StatBox({ title, data }) { return <div className="stat-box"><h3>{title}</h3>{data.length?data.map(([name,count])=><div className="bar-row" key={name}><span>{name}</span><b>{count}</b></div>):<p>未有紀錄</p>}</div> }
-function SettingsPage({ settings, setSettings, restaurants, setRestaurants }) { return <section className="page-stack"><div className="section-head"><div><p className="eyebrow">Settings</p><h2>設定</h2></div></div><div className="setting-card"><label className="check"><input type="checkbox" checked={settings.favoriteBoost} onChange={e=>setSettings({...settings,favoriteBoost:e.target.checked})}/> 最愛餐廳提高抽中機率</label><label className="check"><input type="checkbox" checked={settings.vibration} onChange={e=>setSettings({...settings,vibration:e.target.checked})}/> 手機支援時啟用振動特效</label></div><div className="setting-card"><h3>資料備份</h3><textarea readOnly value={JSON.stringify(restaurants,null,2)} /><button onClick={()=>{localStorage.clear(); setRestaurants(defaultRestaurants); location.reload()}}>重設為預設餐廳</button></div></section> }
+function SettingsPage({ settings, setSettings, restaurants, setRestaurants }) { return <section className="page-stack"><div className="section-head"><div><p className="eyebrow">Settings</p><h2>設定</h2></div></div><div className="setting-card"><label className="check"><input type="checkbox" checked={settings.favoriteBoost} onChange={e=>setSettings({...settings,favoriteBoost:e.target.checked})}/> 最愛餐廳提高抽中機率</label><label className="check"><input type="checkbox" checked={settings.vibration} onChange={e=>setSettings({...settings,vibration:e.target.checked})}/> 手機支援時啟用振動特效</label><label className="wide-label">每格抽籤相隔秒數<input type="number" min="0.5" step="0.5" value={settings.slotDelaySeconds || 3} onChange={e=>setSettings({...settings,slotDelaySeconds:Number(e.target.value)})}/><small>預設 3 秒。動畫停止次序固定為：飲品 → 食品 → 餐廳。</small></label></div><div className="setting-card"><h3>資料備份</h3><textarea readOnly value={JSON.stringify(restaurants,null,2)} /><button onClick={()=>{localStorage.clear(); setRestaurants(defaultRestaurants); location.reload()}}>重設為預設餐廳</button></div></section> }
 function BottomNav({ tab, setTab }) { const tabs=[['home','首頁','🏠'],['restaurants','餐廳','🍽️'],['stats','統計','📊'],['settings','設定','⚙️']]; return <nav className="bottom-nav">{tabs.map(([id,label,icon])=><button className={tab===id?'active':''} key={id} onClick={()=>setTab(id)}><span>{icon}</span>{label}</button>)}</nav> }
