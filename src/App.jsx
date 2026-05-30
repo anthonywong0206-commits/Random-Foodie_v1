@@ -182,6 +182,7 @@ function RestaurantPage({ restaurants, setRestaurants }) {
   const [quickAiStatus, setQuickAiStatus] = useState('')
   const [quickAiDishes, setQuickAiDishes] = useState('')
   const [quickAiPreview, setQuickAiPreview] = useState('')
+  const [quickAiRestaurant, setQuickAiRestaurant] = useState(null)
   const blankRestaurant = { id:null, name:'', category:'快餐', district:'', note:'', favorite:false, dishes:[], drinks:[] }
 
   function saveRestaurant(item) {
@@ -200,13 +201,15 @@ function RestaurantPage({ restaurants, setRestaurants }) {
     setQuickAiPreview('')
     try {
       const result = await analyzeMenuImageFile(file)
+      const inferred = inferRestaurantFromText(result.text, file?.name)
+      setQuickAiRestaurant(inferred)
       setQuickAiPreview(result.text.slice(0, 1200))
       if (!result.dishes.length) {
         setQuickAiStatus('暫時未辨識到菜式名稱。請試用更清晰、正面、光線足夠的餐牌相。')
         return
       }
       setQuickAiDishes(result.dishes.join('\n'))
-      setQuickAiStatus(`已辨識 ${result.dishes.length} 款菜式。可直接按「用結果新增餐廳」或複製到現有餐廳。`)
+      setQuickAiStatus(`已生成預覽：${inferred.name || '未命名餐廳'}，共 ${result.dishes.length} 款菜式。請按「加入新增餐廳頁面」檢查後保存。`)
     } catch (error) {
       console.error(error)
       setQuickAiStatus('AI 圖片分析未能完成。請檢查網絡，或先手動貼上菜式名稱。')
@@ -214,7 +217,8 @@ function RestaurantPage({ restaurants, setRestaurants }) {
   }
 
   function createRestaurantFromAi() {
-    setEditing({ ...blankRestaurant, dishText: quickAiDishes, dishes: parseBulk(quickAiDishes) })
+    const inferred = quickAiRestaurant || blankRestaurant
+    setEditing({ ...blankRestaurant, ...inferred, dishText: quickAiDishes, dishes: parseBulk(quickAiDishes), drinks: inferred.drinks || [], drinkText: (inferred.drinks || []).join('\n') })
     setTimeout(() => document.querySelector('.editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
   }
 
@@ -230,18 +234,25 @@ function RestaurantPage({ restaurants, setRestaurants }) {
 
     <div className="ai-hero-card">
       <div>
-        <p className="eyebrow">AI menu scan</p>
-        <h3>📷 AI 餐牌分析</h3>
-        <p>拍照或上傳餐牌圖片，系統會只擷取「菜式名稱」，並自動放入批量輸入。</p>
+        <p className="eyebrow">AI MENU SCAN</p>
+        <h3>📷 一鍵輸入餐廳及菜單</h3>
+        <p>上傳或拍攝餐牌，系統會生成「餐廳＋菜式」預覽；進入新增餐廳頁面後，由你確認再保存。</p>
       </div>
-      <label className="upload-box ai-hero-upload">
-        📸 拍照 / 上傳餐牌圖片
-        <input type="file" accept="image/*" capture="environment" onChange={e=>quickAnalyze(e.target.files?.[0])}/>
-      </label>
+      <div className="ai-upload-actions hero-actions">
+        <label className="upload-box ai-hero-upload">
+          📷 開啟相機拍餐牌
+          <input type="file" accept="image/*" capture="environment" onChange={e=>quickAnalyze(e.target.files?.[0])}/>
+        </label>
+        <label className="upload-box ai-hero-upload secondary">
+          🖼️ 上傳餐牌圖片
+          <input type="file" accept="image/*" onChange={e=>quickAnalyze(e.target.files?.[0])}/>
+        </label>
+      </div>
       {quickAiStatus && <p className="ocr-status">{quickAiStatus}</p>}
-      {quickAiDishes && <div className="ai-result-box">
+      {quickAiDishes && <div className="ai-result-box ai-preview-card">
+        <div className="preview-title"><span>生成預覽</span><strong>{quickAiRestaurant?.name || '未命名餐廳'}</strong></div>
         <label>AI 生成菜式名稱<textarea value={quickAiDishes} onChange={e=>setQuickAiDishes(e.target.value)} /></label>
-        <button type="button" onClick={createRestaurantFromAi}>用結果新增餐廳</button>
+        <button type="button" onClick={createRestaurantFromAi}>加入新增餐廳頁面，檢查後保存</button>
       </div>}
       {quickAiPreview && <details className="ocr-preview"><summary>查看 AI 讀到的原始文字</summary><pre>{quickAiPreview}</pre></details>}
     </div>
@@ -396,10 +407,16 @@ function RestaurantEditor({ item, onSave, onCancel }) {
         <h4>拍照 / 上傳餐牌，自動加入菜式</h4>
         <p>系統會用圖片文字辨識擷取菜式名稱，並只填入「批量食品」。飲品請在下方飲品區自行輸入。</p>
       </div>
-      <label className="upload-box">
-        📷 拍照或上傳餐牌圖片
-        <input type="file" accept="image/*" capture="environment" onChange={e=>analyzeMenuImage(e.target.files?.[0])}/>
-      </label>
+      <div className="ai-upload-actions">
+        <label className="upload-box">
+          📷 開啟相機拍餐牌
+          <input type="file" accept="image/*" capture="environment" onChange={e=>analyzeMenuImage(e.target.files?.[0])}/>
+        </label>
+        <label className="upload-box secondary">
+          🖼️ 上傳餐牌圖片
+          <input type="file" accept="image/*" onChange={e=>analyzeMenuImage(e.target.files?.[0])}/>
+        </label>
+      </div>
       {ocrStatus && <p className="ocr-status">{ocrStatus}</p>}
       {ocrPreview && <details className="ocr-preview"><summary>查看 AI 讀到的原始文字</summary><pre>{ocrPreview}</pre></details>}
     </div>
@@ -428,6 +445,24 @@ function MenuItemManager({ title, items, value, setValue, addItem, removeItem, r
   </div>
 }
 
+
+function inferRestaurantFromText(text, filename = '') {
+  const lower = `${text || ''} ${filename || ''}`.toLowerCase()
+  const known = [
+    ['麥當勞','快餐'], ['mcdonald','快餐'], ['mcdonalds','快餐'], ['kfc','快餐'], ['肯德基','快餐'],
+    ['大家樂','茶餐廳'], ['café de coral','茶餐廳'], ['cafe de coral','茶餐廳'], ['大快活','茶餐廳'], ['fairwood','茶餐廳'],
+    ['一蘭','日式'], ['ichiran','日式'], ['譚仔三哥','米線'], ['譚仔','米線'], ['tamjai','米線'], ['壽司郎','日式'], ['sushiro','日式']
+  ]
+  for (const [key, category] of known) {
+    if (lower.includes(key.toLowerCase())) {
+      const cleanName = key === 'mcdonald' || key === 'mcdonalds' ? '麥當勞' : key === 'café de coral' || key === 'cafe de coral' ? '大家樂' : key === 'fairwood' ? '大快活' : key === 'ichiran' ? '一蘭' : key === 'tamjai' ? '譚仔' : key === 'sushiro' ? '壽司郎' : key
+      return { name: cleanName, category, district: '全港', note: '由 AI 餐牌分析生成，請保存前檢查。', favorite: false }
+    }
+  }
+  const lines = String(text || '').split(/\n|\r/).map(x => x.trim()).filter(Boolean)
+  const candidate = lines.find(line => line.length >= 2 && line.length <= 16 && !/[0-9$＄￥¥]|套餐|優惠|價格|價錢|menu/i.test(line))
+  return { name: candidate || '', category: '其他', district: '', note: '由 AI 餐牌分析生成，請保存前檢查。', favorite: false }
+}
 
 async function analyzeMenuImageFile(file) {
   const { createWorker } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js')

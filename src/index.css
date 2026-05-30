@@ -13,3 +13,21 @@
 @media(min-width:721px){.ai-hero-card{grid-template-columns:1.2fr .8fr;align-items:center}.ai-hero-card .ocr-status,.ai-hero-card .ai-result-box,.ai-hero-card .ocr-preview{grid-column:1/-1}.menu-edit-grid{grid-template-columns:1fr 1fr!important}.restaurant-card-top{grid-template-columns:1fr auto!important}.card-actions{min-width:290px}}
 @media(max-width:720px){.ai-hero-card{position:relative;z-index:5;padding:15px}.ai-hero-card h3{font-size:24px}.ai-hero-upload{min-height:96px}.ai-result-box textarea{min-height:140px}.menu-edit-title{display:grid}.menu-edit-grid{grid-template-columns:1fr!important}.restaurant-cards{gap:16px}.restaurant-card{padding:14px!important}.restaurant-card-top{grid-template-columns:1fr!important}.card-actions{display:grid!important;grid-template-columns:1fr!important}.card-actions button{width:100%}.editable-row{grid-template-columns:1fr auto!important}}
 @media(max-width:420px){.editable-row{grid-template-columns:1fr!important}.ai-hero-card h3{font-size:22px}.menu-edit-panel.always-open{padding:11px}}
+
+/* v8: AI one-click restaurant + menu preview, with separate camera/upload buttons */
+.ai-upload-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
+.ai-upload-actions .upload-box{min-height:108px;padding:14px}
+.ai-upload-actions .upload-box.secondary{background:#fff6cf!important;color:#5a3212!important;border-color:#ffd267!important}
+.ai-upload-actions.hero-actions .ai-hero-upload{min-height:124px;font-size:18px}
+.ai-upload-actions.hero-actions .ai-hero-upload.secondary{background:#fff3c2!important;color:#5a3212!important;border-color:#ffd267!important}
+.ai-hero-upload::after,.editor .upload-box::after{content:none!important}
+.ai-preview-card{background:linear-gradient(145deg,#fffaf0,#fff)!important;border:3px solid #ffd877!important}
+.preview-title{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:16px;background:#fff1bd;color:#5a3212;font-weight:1000}
+.preview-title span{color:#e65d3d;text-transform:uppercase;letter-spacing:.12em;font-size:12px}
+.preview-title strong{font-size:20px}
+@media(max-width:720px){
+  .ai-upload-actions{grid-template-columns:1fr}
+  .ai-upload-actions .upload-box{min-height:88px}
+  .ai-upload-actions.hero-actions .ai-hero-upload{min-height:104px}
+  .preview-title{display:grid;gap:4px}
+}
