@@ -179,11 +179,163 @@ function ResultCard({ result, shareResult, startRoll }) { return <div className=
 
 function RestaurantPage({ restaurants, setRestaurants }) {
   const [editing, setEditing] = useState(null)
-  return <section className="page-stack"><div className="section-head"><div><p className="eyebrow">Database</p><h2>餐廳資料庫</h2><p>以餐廳為主單位，批量輸入食品及飲品。</p></div><button className="primary-small" onClick={()=>setEditing({ id:null, name:'', category:'快餐', district:'', note:'', favorite:false, dishes:[], drinks:[] })}>＋ 新增餐廳</button></div>
-    {editing && <RestaurantEditor item={editing} onCancel={()=>setEditing(null)} onSave={item=>{ if(item.id) setRestaurants(restaurants.map(r=>r.id===item.id?item:r)); else setRestaurants([{...item,id:cryptoId()},...restaurants]); setEditing(null)}} />}
-    <div className="cards-list">{restaurants.map(r=><article className="item-card" key={r.id}><div><h3>{r.favorite?'❤️ ':''}{r.name}</h3><p>{r.category}・{r.district || '未設定地區'}</p><p className="subtext">{(r.dishes||[]).length} 款食品｜{(r.drinks||[]).length} 款飲品</p></div><div className="card-actions"><button onClick={()=>setRestaurants(restaurants.map(x=>x.id===r.id?{...x,favorite:!x.favorite}:x))}>{r.favorite?'取消最愛':'最愛'}</button><button onClick={()=>setEditing(r)}>編輯</button><button className="danger" onClick={()=>setRestaurants(restaurants.filter(x=>x.id!==r.id))}>刪除</button></div><details><summary>查看菜單</summary><p><b>食品：</b>{(r.dishes||[]).join('、') || '未有'}</p><p><b>飲品：</b>{(r.drinks||[]).join('、') || '未有'}</p></details></article>)}</div>
+  const [quickAiStatus, setQuickAiStatus] = useState('')
+  const [quickAiDishes, setQuickAiDishes] = useState('')
+  const [quickAiPreview, setQuickAiPreview] = useState('')
+  const blankRestaurant = { id:null, name:'', category:'快餐', district:'', note:'', favorite:false, dishes:[], drinks:[] }
+
+  function saveRestaurant(item) {
+    if (item.id) setRestaurants(restaurants.map(r => r.id === item.id ? item : r))
+    else setRestaurants([{ ...item, id: cryptoId() }, ...restaurants])
+    setEditing(null)
+  }
+
+  function patchRestaurant(id, patch) {
+    setRestaurants(restaurants.map(r => r.id === id ? { ...r, ...patch } : r))
+  }
+
+  async function quickAnalyze(file) {
+    if (!file) return
+    setQuickAiStatus('AI 分析中喵⋯手機/電腦都可用，請保持頁面開啟。')
+    setQuickAiPreview('')
+    try {
+      const result = await analyzeMenuImageFile(file)
+      setQuickAiPreview(result.text.slice(0, 1200))
+      if (!result.dishes.length) {
+        setQuickAiStatus('暫時未辨識到菜式名稱。請試用更清晰、正面、光線足夠的餐牌相。')
+        return
+      }
+      setQuickAiDishes(result.dishes.join('\n'))
+      setQuickAiStatus(`已辨識 ${result.dishes.length} 款菜式。可直接按「用結果新增餐廳」或複製到現有餐廳。`)
+    } catch (error) {
+      console.error(error)
+      setQuickAiStatus('AI 圖片分析未能完成。請檢查網絡，或先手動貼上菜式名稱。')
+    }
+  }
+
+  function createRestaurantFromAi() {
+    setEditing({ ...blankRestaurant, dishText: quickAiDishes, dishes: parseBulk(quickAiDishes) })
+    setTimeout(() => document.querySelector('.editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+  }
+
+  return <section className="page-stack restaurant-page">
+    <div className="section-head restaurant-head">
+      <div>
+        <p className="eyebrow">Database</p>
+        <h2>餐廳資料庫</h2>
+        <p>以餐廳為主單位，批量輸入食品及飲品。手機及電腦都可直接修改菜單。</p>
+      </div>
+      <button className="primary-small add-restaurant-btn" onClick={()=>setEditing(blankRestaurant)}>＋ 新增餐廳</button>
+    </div>
+
+    <div className="ai-hero-card">
+      <div>
+        <p className="eyebrow">AI menu scan</p>
+        <h3>📷 AI 餐牌分析</h3>
+        <p>拍照或上傳餐牌圖片，系統會只擷取「菜式名稱」，並自動放入批量輸入。</p>
+      </div>
+      <label className="upload-box ai-hero-upload">
+        📸 拍照 / 上傳餐牌圖片
+        <input type="file" accept="image/*" capture="environment" onChange={e=>quickAnalyze(e.target.files?.[0])}/>
+      </label>
+      {quickAiStatus && <p className="ocr-status">{quickAiStatus}</p>}
+      {quickAiDishes && <div className="ai-result-box">
+        <label>AI 生成菜式名稱<textarea value={quickAiDishes} onChange={e=>setQuickAiDishes(e.target.value)} /></label>
+        <button type="button" onClick={createRestaurantFromAi}>用結果新增餐廳</button>
+      </div>}
+      {quickAiPreview && <details className="ocr-preview"><summary>查看 AI 讀到的原始文字</summary><pre>{quickAiPreview}</pre></details>}
+    </div>
+
+    {editing && <RestaurantEditor
+      item={editing}
+      onCancel={()=>setEditing(null)}
+      onSave={saveRestaurant}
+    />}
+
+    <div className="cards-list restaurant-cards">
+      {restaurants.map(r => <RestaurantCard
+        key={r.id}
+        restaurant={r}
+        onPatch={patch => patchRestaurant(r.id, patch)}
+        onEdit={()=>setEditing(r)}
+        onDelete={()=>setRestaurants(restaurants.filter(x=>x.id!==r.id))}
+      />)}
+    </div>
   </section>
 }
+
+function RestaurantCard({ restaurant: r, onPatch, onEdit, onDelete }) {
+  const [newDish, setNewDish] = useState('')
+  const [newDrink, setNewDrink] = useState('')
+  const dishes = r.dishes || []
+  const drinks = r.drinks || []
+
+  function uniq(list) { return [...new Set(list.map(x => String(x).trim()).filter(Boolean))] }
+  function addDish() { const value = newDish.trim(); if (!value) return; onPatch({ dishes: uniq([...dishes, value]) }); setNewDish('') }
+  function addDrink() { const value = newDrink.trim(); if (!value) return; onPatch({ drinks: uniq([...drinks, value]) }); setNewDrink('') }
+  function renameDish(index, value) { const next = [...dishes]; next[index] = value.trim(); onPatch({ dishes: uniq(next) }) }
+  function renameDrink(index, value) { const next = [...drinks]; next[index] = value.trim(); onPatch({ drinks: uniq(next) }) }
+  function removeDish(index) { onPatch({ dishes: dishes.filter((_, i) => i !== index) }) }
+  function removeDrink(index) { onPatch({ drinks: drinks.filter((_, i) => i !== index) }) }
+
+  return <article className="item-card restaurant-card">
+    <div className="restaurant-card-top">
+      <div>
+        <h3>{r.favorite?'❤️ ':''}{r.name}</h3>
+        <p>{r.category}・{r.district || '未設定地區'}</p>
+        <p className="subtext">{dishes.length} 款食品｜{drinks.length} 款飲品</p>
+      </div>
+      <div className="card-actions">
+        <button onClick={()=>onPatch({ favorite: !r.favorite })}>{r.favorite?'取消最愛':'最愛'}</button>
+        <button className="edit-menu-btn" onClick={onEdit}>✏️ 完整編輯 / AI</button>
+        <button className="danger" onClick={onDelete}>刪除</button>
+      </div>
+    </div>
+
+    <div className="menu-edit-panel always-open">
+      <div className="menu-edit-title">
+        <h4>餐廳菜單修改</h4>
+        <span>可即時新增、改名、刪除菜式及飲品</span>
+      </div>
+      <div className="menu-edit-grid">
+        <InlineMenuEditor
+          title="菜式"
+          items={dishes}
+          value={newDish}
+          setValue={setNewDish}
+          addItem={addDish}
+          renameItem={renameDish}
+          removeItem={removeDish}
+          placeholder="新增菜式，例如：焗豬扒飯"
+        />
+        <InlineMenuEditor
+          title="飲品"
+          items={drinks}
+          value={newDrink}
+          setValue={setNewDrink}
+          addItem={addDrink}
+          renameItem={renameDrink}
+          removeItem={removeDrink}
+          placeholder="新增飲品，例如：凍檸茶"
+        />
+      </div>
+    </div>
+  </article>
+}
+
+function InlineMenuEditor({ title, items, value, setValue, addItem, renameItem, removeItem, placeholder }) {
+  return <div className="inline-menu-editor">
+    <div className="panel-head"><h4>{title}</h4><span>{items.length} 項</span></div>
+    <div className="input-row compact"><input value={value} onChange={e=>setValue(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); addItem()}}} placeholder={placeholder}/><button type="button" onClick={addItem}>加入</button></div>
+    <div className="editable-list compact-list">
+      {items.length ? items.map((name, index) => <div className="editable-row" key={`${name}-${index}`}>
+        <input defaultValue={name} onBlur={e=>renameItem(index, e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); e.currentTarget.blur()}}}/>
+        <button type="button" className="danger" onClick={()=>removeItem(index)}>刪除</button>
+      </div>) : <p className="empty-note">未有{title}</p>}
+    </div>
+  </div>
+}
+
 function RestaurantEditor({ item, onSave, onCancel }) {
   const [form, setForm] = useState({...item, dishText:(item.dishes||[]).join('\n'), drinkText:(item.drinks||[]).join('\n')})
   const [ocrStatus, setOcrStatus] = useState('')
@@ -207,13 +359,9 @@ function RestaurantEditor({ item, onSave, onCancel }) {
     setOcrStatus('AI 分析中喵⋯首次使用需要下載辨識模型，請等一等。')
     setOcrPreview('')
     try {
-      const { createWorker } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js')
-      const worker = await createWorker('chi_tra+eng')
-      const { data } = await worker.recognize(file)
-      await worker.terminate()
-      const text = data?.text || ''
-      setOcrPreview(text.slice(0, 1200))
-      const extracted = extractDishNames(text)
+      const result = await analyzeMenuImageFile(file)
+      setOcrPreview(result.text.slice(0, 1200))
+      const extracted = result.dishes
       if (!extracted.length) {
         setOcrStatus('暫時未辨識到菜式名稱。可以換一張較清晰、正面、光線足夠的餐牌相再試。')
         return
@@ -278,6 +426,16 @@ function MenuItemManager({ title, items, value, setValue, addItem, removeItem, r
       </div>) : <p className="empty-note">未有資料</p>}
     </div>
   </div>
+}
+
+
+async function analyzeMenuImageFile(file) {
+  const { createWorker } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js')
+  const worker = await createWorker('chi_tra+eng')
+  const { data } = await worker.recognize(file)
+  await worker.terminate()
+  const text = data?.text || ''
+  return { text, dishes: extractDishNames(text) }
 }
 
 function extractDishNames(text) {
