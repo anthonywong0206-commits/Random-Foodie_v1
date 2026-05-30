@@ -186,8 +186,117 @@ function RestaurantPage({ restaurants, setRestaurants }) {
 }
 function RestaurantEditor({ item, onSave, onCancel }) {
   const [form, setForm] = useState({...item, dishText:(item.dishes||[]).join('\n'), drinkText:(item.drinks||[]).join('\n')})
-  function submit(e){ e.preventDefault(); if(!form.name.trim()) return; onSave({...form, name:form.name.trim(), dishes:parseBulk(form.dishText), drinks:parseBulk(form.drinkText)}) }
-  return <form className="editor" onSubmit={submit}><h3>{item.id?'編輯餐廳':'新增餐廳'}</h3><div className="form-grid"><label>餐廳名稱<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="例如 麥當勞"/></label><label>分類<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label><label>地區<input value={form.district} onChange={e=>setForm({...form,district:e.target.value})} placeholder="全港 / 旺角"/></label><label>備註<input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></label></div><label className="wide-label">批量食品<textarea value={form.dishText} onChange={e=>setForm({...form,dishText:e.target.value})} placeholder={'每行一款，例如：\n1號餐 巨無霸餐\n2號餐 麥香雞餐\n炸雞餐'}/></label><label className="wide-label">批量飲品<textarea value={form.drinkText} onChange={e=>setForm({...form,drinkText:e.target.value})} placeholder={'每行一款，例如：\n可樂\n凍檸茶\n熱奶茶'}/></label><label className="check"><input type="checkbox" checked={form.favorite} onChange={e=>setForm({...form,favorite:e.target.checked})}/> 最愛餐廳，提高抽中機率</label><div className="action-row"><button type="submit">保存</button><button type="button" onClick={onCancel}>取消</button></div></form>
+  const [ocrStatus, setOcrStatus] = useState('')
+  const [ocrPreview, setOcrPreview] = useState('')
+  const [newDish, setNewDish] = useState('')
+  const [newDrink, setNewDrink] = useState('')
+  const dishes = parseBulk(form.dishText)
+  const drinks = parseBulk(form.drinkText)
+
+  function updateDishList(next) { setForm(f => ({...f, dishText: next.join('\n')})) }
+  function updateDrinkList(next) { setForm(f => ({...f, drinkText: next.join('\n')})) }
+  function addDish() { const value = newDish.trim(); if (!value) return; updateDishList([...new Set([...dishes, value])]); setNewDish('') }
+  function addDrink() { const value = newDrink.trim(); if (!value) return; updateDrinkList([...new Set([...drinks, value])]); setNewDrink('') }
+  function removeDish(name) { updateDishList(dishes.filter(x => x !== name)) }
+  function removeDrink(name) { updateDrinkList(drinks.filter(x => x !== name)) }
+  function renameDish(oldName, nextName) { const value = nextName.trim(); if (!value) return; updateDishList(dishes.map(x => x === oldName ? value : x)) }
+  function renameDrink(oldName, nextName) { const value = nextName.trim(); if (!value) return; updateDrinkList(drinks.map(x => x === oldName ? value : x)) }
+
+  async function analyzeMenuImage(file) {
+    if (!file) return
+    setOcrStatus('AI 分析中喵⋯首次使用需要下載辨識模型，請等一等。')
+    setOcrPreview('')
+    try {
+      const { createWorker } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js')
+      const worker = await createWorker('chi_tra+eng')
+      const { data } = await worker.recognize(file)
+      await worker.terminate()
+      const text = data?.text || ''
+      setOcrPreview(text.slice(0, 1200))
+      const extracted = extractDishNames(text)
+      if (!extracted.length) {
+        setOcrStatus('暫時未辨識到菜式名稱。可以換一張較清晰、正面、光線足夠的餐牌相再試。')
+        return
+      }
+      const merged = [...new Set([...dishes, ...extracted])]
+      updateDishList(merged)
+      setOcrStatus(`已自動加入 ${extracted.length} 款菜式到「批量食品」喵！飲品不會自動填入。`)
+    } catch (error) {
+      console.error(error)
+      setOcrStatus('圖片分析未能完成。請檢查網絡，或直接把餐牌文字貼入批量食品。')
+    }
+  }
+
+  function submit(e){
+    e.preventDefault()
+    if(!form.name.trim()) return
+    onSave({...form, name:form.name.trim(), dishes:parseBulk(form.dishText), drinks:parseBulk(form.drinkText)})
+  }
+
+  return <form className="editor" onSubmit={submit}>
+    <h3>{item.id?'編輯餐廳':'新增餐廳'}</h3>
+    <div className="form-grid">
+      <label>餐廳名稱<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="例如 麥當勞"/></label>
+      <label>分類<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label>
+      <label>地區<input value={form.district} onChange={e=>setForm({...form,district:e.target.value})} placeholder="全港 / 旺角"/></label>
+      <label>備註<input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></label>
+    </div>
+
+    <div className="ai-panel">
+      <div>
+        <p className="eyebrow">AI menu scan</p>
+        <h4>拍照 / 上傳餐牌，自動加入菜式</h4>
+        <p>系統會用圖片文字辨識擷取菜式名稱，並只填入「批量食品」。飲品請在下方飲品區自行輸入。</p>
+      </div>
+      <label className="upload-box">
+        📷 拍照或上傳餐牌圖片
+        <input type="file" accept="image/*" capture="environment" onChange={e=>analyzeMenuImage(e.target.files?.[0])}/>
+      </label>
+      {ocrStatus && <p className="ocr-status">{ocrStatus}</p>}
+      {ocrPreview && <details className="ocr-preview"><summary>查看 AI 讀到的原始文字</summary><pre>{ocrPreview}</pre></details>}
+    </div>
+
+    <label className="wide-label">批量食品<textarea value={form.dishText} onChange={e=>setForm({...form,dishText:e.target.value})} placeholder={'每行一款，例如：\n1號餐 巨無霸餐\n2號餐 麥香雞餐\n炸雞餐'}/></label>
+    <MenuItemManager title="已輸入菜式" items={dishes} value={newDish} setValue={setNewDish} addItem={addDish} removeItem={removeDish} renameItem={renameDish} placeholder="新增單一菜式" />
+
+    <label className="wide-label">批量飲品<textarea value={form.drinkText} onChange={e=>setForm({...form,drinkText:e.target.value})} placeholder={'每行一款，例如：\n可樂\n凍檸茶\n熱奶茶'}/></label>
+    <MenuItemManager title="已輸入飲品" items={drinks} value={newDrink} setValue={setNewDrink} addItem={addDrink} removeItem={removeDrink} renameItem={renameDrink} placeholder="新增單一飲品" />
+
+    <label className="check"><input type="checkbox" checked={form.favorite} onChange={e=>setForm({...form,favorite:e.target.checked})}/> 最愛餐廳，提高抽中機率</label>
+    <div className="action-row"><button type="submit">保存</button><button type="button" onClick={onCancel}>取消</button></div>
+  </form>
+}
+
+function MenuItemManager({ title, items, value, setValue, addItem, removeItem, renameItem, placeholder }) {
+  return <div className="menu-manager">
+    <div className="panel-head"><h4>{title}</h4><span>{items.length} 項</span></div>
+    <div className="input-row"><input value={value} onChange={e=>setValue(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); addItem()}}} placeholder={placeholder}/><button type="button" onClick={addItem}>加入</button></div>
+    <div className="editable-list">
+      {items.length ? items.map(name => <div className="editable-row" key={name}>
+        <input defaultValue={name} onBlur={e=>renameItem(name, e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); e.currentTarget.blur()}}}/>
+        <button type="button" className="danger" onClick={()=>removeItem(name)}>刪除</button>
+      </div>) : <p className="empty-note">未有資料</p>}
+    </div>
+  </div>
+}
+
+function extractDishNames(text) {
+  const drinkWords = ['可樂','雪碧','七喜','咖啡','奶茶','檸茶','檸水','茶','水','果汁','豆漿','啤酒','汽水','飲品','凍飲','熱飲','朱古力','奶昔','烏龍','綠茶','百事','忌廉']
+  const noiseWords = ['優惠','套餐','餐牌','menu','price','價錢','加一','服務費','供應','外賣','堂食','圖片','港幣','hkd','地址','電話','掃碼','付款','訂購']
+  return [...new Set(text
+    .split(/\n|\r|\t| {2,}|,|，|、|\|/)
+    .map(line => line
+      .replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0)-0xFEE0))
+      .replace(/[$＄￥¥]?\s*\d+(?:\.\d+)?\s*(?:元|蚊|起|\/位)?/gi, '')
+      .replace(/^[\s\-–—•●○▪▫*#]*(?:[A-Z]|\d+|[一二三四五六七八九十]+)[\).、．:：\-\s]*/i, '')
+      .replace(/[|｜·•●★☆✓✔︎]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim())
+    .filter(line => line.length >= 2 && line.length <= 28)
+    .filter(line => !/^\d+$/.test(line))
+    .filter(line => !drinkWords.some(w => line.includes(w)))
+    .filter(line => !noiseWords.some(w => line.toLowerCase().includes(w.toLowerCase())))
+  )].slice(0, 80)
 }
 
 function StatsPage({ history, setHistory }) {
